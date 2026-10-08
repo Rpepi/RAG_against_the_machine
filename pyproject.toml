@@ -1,0 +1,35 @@
+[project]
+name = "rag-against-the-machine"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Romain Pepi", email = "romain.pepi07@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fire>=0.7.1",
+    "flake8>=7.4.1",
+    "pydantic>=2.13.5",
+    "rank-bm25>=0.2.2",
+    "tqdm>=4.70.1",
+]
+
+[project.scripts]
+rag-against-the-machine = "src.__main__:main"
+
+[tool.uv.build-backend]
+module-name = "src"
+module-root = ""
+
+[build-system]
+requires = ["uv_build>=0.12.0,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
