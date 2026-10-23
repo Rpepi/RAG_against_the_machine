@@ -1,14 +1,15 @@
 import re
 
+
 WORD_RE = re.compile(r"[A-Za-z0-9_]+")
 PART_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
 MIN_TOKEN_LENGTH = 2
 
 
 def split_identifier(word: str) -> list[str]:
-    """Lowercase parts of an identifier: `getModelConfig` -> get, model, config.
+    """Parts of an identifier: `getModelConfig` -> get, model, config.
 
-    Splits on underscores, on camelCase boundaries and between letters and digits.
+    Splits on underscores, camelCase boundaries and letter/digit changes.
     """
     parts: list[str] = []
     for piece in word.split("_"):

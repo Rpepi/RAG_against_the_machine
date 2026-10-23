@@ -2,9 +2,9 @@ import json
 import math
 
 import pytest
-from src.indexing.bm25 import BM25Index, IndexLoadError
-from src.indexing.chunking.models import Chunck
-from src.indexing.retrieval.tokenizer import tokenize
+from src.retrieval.bm25 import BM25Index, IndexLoadError
+from src.data_models.models import Chunck
+from src.retrieval.tokenizer import tokenize
 
 TEXTS = [
     "max_num_seqs sets the maximum number of sequences",
@@ -80,7 +80,6 @@ class TestBuild:
         twice.build(chunks)
         assert twice.inverted_index == once.inverted_index
 
-
     def test_k1_and_b_survive_rebuild(self):
         chunks = [make_chunk(0, "alpha beta"), make_chunk(1, "beta gamma")]
         bm25 = BM25Index(k1=2, b=0.5)
@@ -103,7 +102,9 @@ class TestSearch:
         scores = [r.score for r in result]
         assert scores == sorted(scores, reverse=True)
         for r in result:
-            doc = int(r.file_path[len("data/raw/f"):-len(".md")])
+            doc = int(
+                r.file_path.removeprefix("data/raw/f").removesuffix(".md")
+            )
             expected = hand_score("model config the", doc)
             assert r.score == pytest.approx(expected)
 
@@ -173,7 +174,12 @@ class TestSaveLoad:
         index.save(path)
         data = json.loads(path.read_text(encoding="utf-8"))
         assert set(data) == {
-            "k1", "b", "avgdl", "doc_length", "inverted_index", "sources",
+            "k1",
+            "b",
+            "avgdl",
+            "doc_length",
+            "inverted_index",
+            "sources",
         }
 
 
@@ -210,18 +216,30 @@ class TestLoadErrors:
             self.load_text(tmp_path, "[1, 2]")
 
     def test_malformed_source(self, tmp_path):
-        content = json.dumps({
-            "k1": 1, "b": 1, "avgdl": 1, "doc_length": [],
-            "inverted_index": {}, "sources": [{"x": 1}],
-        })
+        content = json.dumps(
+            {
+                "k1": 1,
+                "b": 1,
+                "avgdl": 1,
+                "doc_length": [],
+                "inverted_index": {},
+                "sources": [{"x": 1}],
+            }
+        )
         with pytest.raises(IndexLoadError, match="malformed"):
             self.load_text(tmp_path, content)
 
     def test_lengths_and_sources_must_match(self, tmp_path):
-        content = json.dumps({
-            "k1": 1, "b": 1, "avgdl": 1, "doc_length": [1, 2, 3],
-            "inverted_index": {}, "sources": [],
-        })
+        content = json.dumps(
+            {
+                "k1": 1,
+                "b": 1,
+                "avgdl": 1,
+                "doc_length": [1, 2, 3],
+                "inverted_index": {},
+                "sources": [],
+            }
+        )
         with pytest.raises(IndexLoadError, match="inconsistent"):
             self.load_text(tmp_path, content)
 

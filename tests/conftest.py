@@ -1,12 +1,13 @@
 import pytest
-from src.indexing.chunking import common
+from src.chunking import common
 
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
-    """A fake project root; returns `write(name, content) -> Path` to create files in it.
+    """A fake project root; returns `write(name, content) -> Path`.
 
-    Files are written byte for byte (no newline translation), like `read_source` reads them.
+    Files are written byte for byte (no newline translation), like
+    `read_source` reads them.
     """
     root = tmp_path.resolve()
     monkeypatch.setattr(common, "PROJECT_ROOT", root)

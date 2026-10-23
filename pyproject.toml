@@ -1,7 +1,7 @@
 [project]
 name = "rag-against-the-machine"
 version = "0.1.0"
-description = "Add your description here"
+description = "RAG against the machine uv env"
 readme = "README.md"
 authors = [
     { name = "Romain Pepi", email = "romain.pepi07@gmail.com" }
@@ -9,10 +9,10 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fire>=0.7.1",
-    "flake8>=7.4.1",
-    "pydantic>=2.13.5",
-    "rank-bm25>=0.2.2",
+    "pydantic>=2.14.1",
+    "torch>=2.14.1",
     "tqdm>=4.70.1",
+    "transformers>=5.20.2",
 ]
 
 [project.scripts]
@@ -22,14 +22,56 @@ rag-against-the-machine = "src.__main__:main"
 module-name = "src"
 module-root = ""
 
+[tool.uv.sources]
+torchvision = [
+  { index = "pytorch-cpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+
 [build-system]
 requires = ["uv_build>=0.12.0,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "flake8>=7.4.1",
+    "mypy>=2.4.0",
     "pytest>=9.1.1",
+    "types-tqdm>=4.70.0.20260906",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+exclude = ["^data/", "^moulinette/", "^\\.venv/"]
+
+[[tool.mypy.overrides]]
+module = ["fire", "fire.*"]
+ignore_missing_imports = true
+
+# The tests are type-checked, but their functions need no annotations
+# (add the name of a new test file here).
+[[tool.mypy.overrides]]
+module = [
+    "conftest",
+    "helpers",
+    "test_answer",
+    "test_bm25",
+    "test_cli",
+    "test_common",
+    "test_evaluate",
+    "test_markdown_chunking",
+    "test_max_chunk_size",
+    "test_python_chunking",
+    "test_search",
+    "test_text_chunking",
+    "test_tokenizer",
+]
+disallow_untyped_defs = false

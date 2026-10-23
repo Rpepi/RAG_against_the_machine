@@ -1,8 +1,7 @@
 import pytest
 from helpers import code_block
-from src.indexing.chunking.common import (
-    DEFAULT_MAX_CHUNK_SIZE,
-    MAX_CHUNK_SIZE,
+from src.config import DEFAULT_MAX_CHUNK_SIZE, MAX_CHUNK_SIZE
+from src.chunking.common import (
     fusion_chuncks,
     make_chunk,
     protected_block,
@@ -34,12 +33,18 @@ def joined(parts) -> str:
 class TestMakeChunk:
     def test_fills_every_field(self):
         c = make_chunk("data/raw/a.md", 10, "hello", "Title")
-        assert (c.file_path, c.first_character_index, c.last_character_index) == ("data/raw/a.md", 10, 15)
+        assert (
+            c.file_path,
+            c.first_character_index,
+            c.last_character_index,
+        ) == ("data/raw/a.md", 10, 15)
         assert (c.size, c.text, c.title) == (5, "hello", "Title")
 
 
 class TestReadSource:
-    def test_file_path_is_relative_to_the_project_with_raw_prefix(self, project):
+    def test_file_path_is_relative_to_the_project_with_raw_prefix(
+        self, project
+    ):
         path = project("docs/a.md", "hello")
         text, file_path = read_source(path)
         assert (text, file_path) == ("hello", "data/raw/docs/a.md")
@@ -49,7 +54,9 @@ class TestReadSource:
         assert text == "a\r\nb\r\n"
 
     def test_path_already_under_data_raw_is_not_prefixed_twice(self, project):
-        _, file_path = read_source(project("data/raw/vllm-0.10.1/docs/a.md", "x"))
+        _, file_path = read_source(
+            project("data/raw/vllm-0.10.1/docs/a.md", "x")
+        )
         assert file_path == "data/raw/vllm-0.10.1/docs/a.md"
 
     def test_data_raw_prefix_only_counts_at_the_root(self, project):
@@ -76,17 +83,29 @@ class TestProtectedBlock:
         assert protected_block(500, [(0, MAX_CHUNK_SIZE + 1)]) is None
 
     def test_block_of_exactly_max_is_protected(self):
-        assert protected_block(500, [(0, MAX_CHUNK_SIZE)]) == (0, MAX_CHUNK_SIZE)
+        assert protected_block(500, [(0, MAX_CHUNK_SIZE)]) == (
+            0,
+            MAX_CHUNK_SIZE,
+        )
 
 
 class TestSplitAt:
     def test_one_chunk_per_boundary(self):
-        parts = split_at("abcdef", "data/raw/x", [(0, "A"), (2, "B"), (4, "C")], "D")
-        assert [(p.title, p.text) for p in parts] == [("A", "ab"), ("B", "cd"), ("C", "ef")]
+        parts = split_at(
+            "abcdef", "data/raw/x", [(0, "A"), (2, "B"), (4, "C")], "D"
+        )
+        assert [(p.title, p.text) for p in parts] == [
+            ("A", "ab"),
+            ("B", "cd"),
+            ("C", "ef"),
+        ]
 
     def test_text_before_the_first_boundary_gets_the_default_title(self):
         parts = split_at("abcdef", "data/raw/x", [(2, "B")], "D")
-        assert [(p.title, p.text) for p in parts] == [("D", "ab"), ("B", "cdef")]
+        assert [(p.title, p.text) for p in parts] == [
+            ("D", "ab"),
+            ("B", "cdef"),
+        ]
 
     def test_no_boundary_is_one_chunk(self):
         parts = split_at("abc", "data/raw/x", [], "D")
@@ -98,7 +117,9 @@ class TestSplitAt:
 
     def test_indexes_are_the_offsets_in_the_text(self):
         parts = split_at("abcdef", "data/raw/x", [(0, "A"), (2, "B")], "D")
-        assert [(p.first_character_index, p.last_character_index) for p in parts] == [(0, 2), (2, 6)]
+        assert [
+            (p.first_character_index, p.last_character_index) for p in parts
+        ] == [(0, 2), (2, 6)]
 
 
 class TestSplitBlankline:
@@ -119,14 +140,19 @@ class TestSplitBlankline:
         assert [p.text for p in parts] == ["a\r\n\r\n", "b"]
 
     def test_no_blank_line_is_one_part(self):
-        assert [p.text for p in split_blankline(chunk("a\nb\nc"))] == ["a\nb\nc"]
+        assert [p.text for p in split_blankline(chunk("a\nb\nc"))] == [
+            "a\nb\nc"
+        ]
 
     def test_text_ending_with_a_blank_line_makes_no_empty_part(self):
         assert [p.text for p in split_blankline(chunk("a\n\n"))] == ["a\n\n"]
 
     def test_parts_keep_title_and_absolute_offsets(self):
         parts = split_blankline(chunk("a\n\nb", title="Sec", start=100))
-        assert [(p.title, p.first_character_index, p.last_character_index) for p in parts] == [
+        assert [
+            (p.title, p.first_character_index, p.last_character_index)
+            for p in parts
+        ] == [
             ("Sec", 100, 103),
             ("Sec", 103, 104),
         ]
@@ -148,7 +174,10 @@ class TestSplitBlankline:
 
 class TestSplitLimits:
     def test_parts_are_even(self):
-        assert [p.size for p in split_limits(chunk("a" * 3001), max_chunk_size=1500)] == [1001, 1000, 1000]
+        assert [
+            p.size
+            for p in split_limits(chunk("a" * 3001), max_chunk_size=1500)
+        ] == [1001, 1000, 1000]
 
     def test_small_text_is_not_cut(self):
         assert [p.size for p in split_limits(chunk("a" * 100))] == [100]
@@ -203,7 +232,10 @@ class TestFusion:
 
     def test_merged_chunk_covers_the_same_range(self):
         merged = fusion_chuncks(contiguous([100, 100]))
-        assert (merged[0].first_character_index, merged[0].last_character_index) == (0, 200)
+        assert (
+            merged[0].first_character_index,
+            merged[0].last_character_index,
+        ) == (0, 200)
         assert merged[0].text == "x" * 200
 
     def test_never_exceeds_the_max(self):
@@ -211,10 +243,18 @@ class TestFusion:
         assert [m.size for m in merged] == [1400, 200]
 
     def test_exactly_the_max_is_allowed(self):
-        assert [m.size for m in fusion_chuncks(contiguous([100, 1400]), max_chunk_size=1500)] == [1500]
+        assert [
+            m.size
+            for m in fusion_chuncks(
+                contiguous([100, 1400]), max_chunk_size=1500
+            )
+        ] == [1500]
 
     def test_chunks_at_or_above_min_are_left_alone(self):
-        assert [m.size for m in fusion_chuncks(contiguous([400, 400]))] == [400, 400]
+        assert [m.size for m in fusion_chuncks(contiguous([400, 400]))] == [
+            400,
+            400,
+        ]
 
     def test_empty_list(self):
         assert fusion_chuncks([]) == []
@@ -223,7 +263,10 @@ class TestFusion:
 class TestRefine:
     def test_small_sections_are_kept_and_never_merged(self):
         sections = [chunk("a" * 100, "A", 0), chunk("b" * 100, "B", 100)]
-        assert [(c.title, c.size) for c in refine(sections)] == [("A", 100), ("B", 100)]
+        assert [(c.title, c.size) for c in refine(sections)] == [
+            ("A", 100),
+            ("B", 100),
+        ]
 
     def test_big_section_is_cut_and_keeps_its_title(self):
         text = ("x" * 700 + "\n\n") * 5
@@ -246,7 +289,10 @@ class TestRefine:
         assert joined(parts) == "x" * 5000
 
     def test_sections_are_processed_independently(self):
-        sections = [chunk("a" * 100, "A", 0), chunk(("b" * 700 + "\n\n") * 4, "B", 100)]
+        sections = [
+            chunk("a" * 100, "A", 0),
+            chunk(("b" * 700 + "\n\n") * 4, "B", 100),
+        ]
         titles = [c.title for c in refine(sections)]
         assert titles[0] == "A"
         assert set(titles[1:]) == {"B"}

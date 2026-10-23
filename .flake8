@@ -1,0 +1,11 @@
+[flake8]
+# Keep the default rules and the 79 columns; only skip what is not our code:
+# the virtual environment, the vLLM corpus and the data files.
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    .mypy_cache,
+    .pytest_cache,
+    data,
+    moulinette

@@ -2,7 +2,7 @@ import ast
 
 import pytest
 from helpers import VLLM, assert_valid, read_raw
-from src.indexing.chunking.python_chunking import (
+from src.chunking.python_chunking import (
     parse,
     python_chunker,
     split_definitions,
@@ -66,14 +66,20 @@ class TestPythonChunker:
         assert_valid(chunks, SOURCE)
         assert [c.title for c in chunks] == ["mod.py", "foo", "bar", "Small"]
 
-    def test_code_between_definitions_is_titled_with_the_file_name(self, project):
+    def test_code_between_definitions_is_titled_with_the_file_name(
+        self, project
+    ):
         chunks = chunk_source(project, SOURCE)
         assert chunks[0].text == '"""Module doc."""\nimport os\n\nX = 1\n\n\n'
         assert chunks[0].title == "mod.py"
 
-    def test_decorators_and_comment_above_belong_to_the_function(self, project):
+    def test_decorators_and_comment_above_belong_to_the_function(
+        self, project
+    ):
         chunk = chunk_source(project, SOURCE)[1]
-        assert chunk.text.startswith("# helper for foo\n@decorator\ndef foo(a):")
+        assert chunk.text.startswith(
+            "# helper for foo\n@decorator\ndef foo(a):"
+        )
 
     def test_blank_lines_after_a_definition_stay_with_it(self, project):
         chunk = chunk_source(project, SOURCE)[1]
@@ -85,14 +91,20 @@ class TestPythonChunker:
 
     def test_small_class_is_one_chunk(self, project):
         chunk = chunk_source(project, SOURCE)[3]
-        assert chunk.text == "class Small:\n    def m(self):\n        return 1\n"
+        assert (
+            chunk.text == "class Small:\n    def m(self):\n        return 1\n"
+        )
 
     def test_file_path_and_indexes(self, project):
         chunks = chunk_source(project, SOURCE, "vllm/mod.py")
         assert chunks[0].file_path == "data/raw/vllm/mod.py"
-        assert chunks[1].first_character_index == SOURCE.index("# helper for foo")
+        assert chunks[1].first_character_index == SOURCE.index(
+            "# helper for foo"
+        )
 
-    def test_comment_indented_deeper_is_not_pulled_into_the_next_function(self, project):
+    def test_comment_indented_deeper_is_not_pulled_into_the_next_function(
+        self, project
+    ):
         source = "def a():\n    pass\n    # trailing\ndef b():\n    pass\n"
         chunks = chunk_source(project, source)
         assert_valid(chunks, source)
@@ -117,20 +129,38 @@ class TestPythonChunker:
         assert len(chunks) == 4
 
     def test_class_bigger_than_the_max_is_opened_up_by_method(self, project):
-        source = "class Big:\n    '''doc'''\n\n" + method("m1", 700) + method("m2", 700) + method("m3", 700)
+        source = (
+            "class Big:\n    '''doc'''\n\n"
+            + method("m1", 700)
+            + method("m2", 700)
+            + method("m3", 700)
+        )
         chunks = chunk_source(project, source)
         assert_valid(chunks, source)
-        assert [c.title for c in chunks] == ["Big", "Big.m1", "Big.m2", "Big.m3"]
+        assert [c.title for c in chunks] == [
+            "Big",
+            "Big.m1",
+            "Big.m2",
+            "Big.m3",
+        ]
         assert chunks[0].text == "class Big:\n    '''doc'''\n\n"
 
     def test_code_after_a_method_keeps_the_class_name(self, project):
-        source = "class Big:\n" + method("m1", 700) + "    attr = 1\n\n" + method("m2", 800)
+        source = (
+            "class Big:\n"
+            + method("m1", 700)
+            + "    attr = 1\n\n"
+            + method("m2", 800)
+        )
         chunks = python_chunker(project("mod.py", source), max_chunk_size=1500)
         assert_valid(chunks, source, 1500)
         assert [c.title for c in chunks] == ["Big", "Big.m1", "Big", "Big.m2"]
 
     def test_nested_class_names_are_dotted(self, project):
-        inner = "    class Inner:\n" + "".join(f"        def m{i}(self):\n            return '{'x' * 500}'\n\n" for i in range(4))
+        inner = "    class Inner:\n" + "".join(
+            f"        def m{i}(self):\n            return '{'x' * 500}'\n\n"
+            for i in range(4)
+        )
         source = "class Outer:\n" + inner
         chunks = chunk_source(project, source)
         assert_valid(chunks, source)
@@ -138,7 +168,10 @@ class TestPythonChunker:
         assert "Outer.Inner.m0" in [c.title for c in chunks]
 
     def test_big_function_is_cut_and_keeps_its_name(self, project):
-        body = "".join(f"    step_{i} = compute({i})\n    other_{i} = {'v' * 150}\n\n" for i in range(20))
+        body = "".join(
+            f"    step_{i} = compute({i})\n    other_{i} = {'v' * 150}\n\n"
+            for i in range(20)
+        )
         source = "def big():\n" + body
         chunks = chunk_source(project, source)
         assert_valid(chunks, source)
@@ -171,7 +204,9 @@ class TestPythonChunker:
         assert [c.title for c in chunks] == ["mod.py", "foo", "bar", "Small"]
 
     def test_non_ascii_characters_keep_the_indexes(self, project):
-        source = "# é à ü 日本語\nNAME = 'héllo'\n\n\ndef f():\n    return 'ñ'\n"
+        source = (
+            "# é à ü 日本語\nNAME = 'héllo'\n\n\ndef f():\n    return 'ñ'\n"
+        )
         chunks = chunk_source(project, source)
         assert_valid(chunks, source)
         assert [c.title for c in chunks] == ["mod.py", "f"]
@@ -187,13 +222,23 @@ class TestSplitDefinitions:
         assert "".join(s.text for s in sections) == SOURCE
 
     def test_definition_ending_the_file_without_newline(self):
-        sections = split_definitions("def a():\n    pass", "data/raw/mod.py", "mod.py")
-        assert [(s.title, s.text) for s in sections] == [("a", "def a():\n    pass")]
+        sections = split_definitions(
+            "def a():\n    pass", "data/raw/mod.py", "mod.py"
+        )
+        assert [(s.title, s.text) for s in sections] == [
+            ("a", "def a():\n    pass")
+        ]
 
 
-@pytest.mark.skipif(not (VLLM / "vllm").exists(), reason="vLLM sources not present")
+@pytest.mark.skipif(
+    not (VLLM / "vllm").exists(), reason="vLLM sources not present"
+)
 class TestRealPythonFiles:
-    FILES = sorted(p for p in VLLM.rglob("*.py") if p.is_file()) if (VLLM / "vllm").exists() else []
+    FILES = (
+        sorted(p for p in VLLM.rglob("*.py") if p.is_file())
+        if (VLLM / "vllm").exists()
+        else []
+    )
 
     def test_there_are_files(self):
         assert len(self.FILES) > 1000
@@ -224,11 +269,23 @@ class TestRealPythonFiles:
             for line in text.split("\n"):
                 offsets.append(offsets[-1] + len(line) + 1)
             starts = [
-                offsets[node.lineno - 1] for node in tree.body
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                offsets[node.lineno - 1]
+                for node in tree.body
+                if isinstance(
+                    node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                )
             ]
             for chunk in python_chunker(path):
-                inside = [s for s in starts if chunk.first_character_index <= s < chunk.last_character_index]
+                inside = [
+                    s
+                    for s in starts
+                    if chunk.first_character_index
+                    <= s
+                    < chunk.last_character_index
+                ]
                 if len(inside) > 1:
-                    problems.append(f"{path.relative_to(VLLM)} {chunk.title} holds {len(inside)} definitions")
+                    problems.append(
+                        f"{path.relative_to(VLLM)} {chunk.title} "
+                        f"holds {len(inside)} definitions"
+                    )
         assert not problems, "\n".join(problems[:10])

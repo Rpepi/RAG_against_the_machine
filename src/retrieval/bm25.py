@@ -1,11 +1,11 @@
-from src.indexing.chunking.models import (
+from src.data_models.models import (
     MinimalSource,
     Chunck,
     ScoredSource,
 )
-from src.indexing.chunking.markdown_chunking import markdown_chunker
-from src.indexing.chunking.common import PROJECT_ROOT
-from src.indexing.retrieval.tokenizer import tokenize
+from src.config import PROJECT_ROOT
+from src.utils.errors import RagError
+from src.retrieval.tokenizer import tokenize
 from collections import Counter
 from pathlib import Path
 from pydantic import ValidationError
@@ -17,17 +17,24 @@ import math
 DEFAULT_INDEX_PATH = PROJECT_ROOT / "data" / "processed" / "bm25_index.json"
 
 
-class IndexLoadError(Exception):
+class IndexLoadError(RagError):
     """An index file cannot be read or is not a valid index."""
 
 
 class BM25Index:
+    """BM25 index over chunks: inverted index, chunk lengths and locations.
+
+    `k1` sets how fast repeated terms saturate and `b` how much long chunks
+    are penalised. Chunks are identified by their position in `sources`.
+    """
     def __init__(self, k1: float = 1.5, b: float = 0.75) -> None:
+        """Create an empty index with the BM25 parameters `k1` and `b`."""
         self.k1 = k1  # saturation parameter
         self.b = b  # length penalty parameter
         self._reset()
 
     def _reset(self) -> None:
+        """Empty the index; `k1` and `b` are kept."""
         # token -> [[chunk_id, tf], ...], e.g. {"docker": [[3, 12], [4, 8]]}
         self.inverted_index: dict[str, list[list[int]]] = {}
         self.doc_length: list[int] = []  # n of tokens per chunk
@@ -35,6 +42,11 @@ class BM25Index:
         self.sources: list[MinimalSource] = []
 
     def build(self, chunks: list[Chunck]) -> None:
+        """Index `chunks`, replacing any previous content.
+
+        Raises:
+            ValueError: `chunks` is empty.
+        """
         if not chunks:
             raise ValueError("no chunk to index")
         self._reset()  # reset the object
@@ -46,14 +58,17 @@ class BM25Index:
                 postings.append([chunck_id, tf])
 
             self.doc_length.append(len(tokens))
-            self.sources.append(MinimalSource(
-                file_path=chunk.file_path,
-                first_character_index=chunk.first_character_index,
-                last_character_index=chunk.last_character_index
-            ))
+            self.sources.append(
+                MinimalSource(
+                    file_path=chunk.file_path,
+                    first_character_index=chunk.first_character_index,
+                    last_character_index=chunk.last_character_index,
+                )
+            )
         self.avgdl = sum(self.doc_length) / len(self.doc_length)
 
     def save(self, path: Path) -> None:
+        """Write the index as JSON to `path`, creating the missing folders."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data: dict[str, object] = {
@@ -62,23 +77,29 @@ class BM25Index:
             "inverted_index": self.inverted_index,
             "doc_length": self.doc_length,
             "avgdl": self.avgdl,
-            "sources": [source.model_dump() for source in self.sources]
+            "sources": [source.model_dump() for source in self.sources],
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f)
 
     def _idf(self, token: str) -> float:
+        """Inverse document frequency of `token` (a variant that stays > 0)."""
         # n of chunks that contain the token
         n_t = len(self.inverted_index.get(token, []))
         N = len(self.doc_length)  # n total of chunks
         return math.log(1 + (N - n_t + 0.5) / (n_t + 0.5))
 
     def _bm25(self, idf: float, tf: int, chunk_id: int) -> float:
+        """BM25 score in chunk `chunk_id` of a query token with this IDF."""
         length_ratio = self.doc_length[chunk_id] / self.avgdl
         norm = 1 - self.b + self.b * length_ratio
         return idf * (tf * (self.k1 + 1)) / (tf + self.k1 * norm)
 
     def search(self, query: str, k: int) -> list[ScoredSource]:
+        """The `k` chunks with the best BM25 score for `query`, best first.
+
+        Only the chunks that share a token with the query are scored.
+        """
         scores: dict[int, float] = {}
         query_tokens = set(tokenize(query))
 
@@ -92,16 +113,18 @@ class BM25Index:
         results: list[ScoredSource] = []
         for chunk_id, score in top:
             source = self.sources[chunk_id]
-            results.append(ScoredSource(
-                file_path=source.file_path,
-                first_character_index=source.first_character_index,
-                last_character_index=source.last_character_index,
-                score=score,
-            ))
+            results.append(
+                ScoredSource(
+                    file_path=source.file_path,
+                    first_character_index=source.first_character_index,
+                    last_character_index=source.last_character_index,
+                    score=score,
+                )
+            )
         return results
 
     @classmethod
-    def load(cls, path: Path) -> "BM25Index":
+    def load(cls, path: Path | str) -> "BM25Index":
         """Read an index saved by `save`.
 
         Raises:
@@ -145,12 +168,3 @@ class BM25Index:
                 f"{len(index.sources)} sources"
             )
         return index
-
-
-if __name__ == "__main__":
-    chunks = markdown_chunker(
-        PROJECT_ROOT / "data" / "raw" / "vllm-0.10.1"
-        / "docs" / "design" / "plugin_system.md"
-    )
-    bm = BM25Index()
-    bm.build(chunks)

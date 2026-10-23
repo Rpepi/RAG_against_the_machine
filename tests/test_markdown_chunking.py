@@ -1,7 +1,7 @@
 import pytest
 from helpers import VLLM, assert_valid, code_block, cut_offsets, read_raw
-from src.indexing.chunking.common import MAX_CHUNK_SIZE
-from src.indexing.chunking.markdown_chunking import (
+from src.config import MAX_CHUNK_SIZE
+from src.chunking.markdown_chunking import (
     code_blocks,
     markdown_chunker,
     split_title,
@@ -23,7 +23,7 @@ class TestCodeBlocks:
 
     def test_indented_fence(self):
         text = "- item\n\n  ```\n  code\n  ```\n"
-        (start, end), = code_blocks(text)
+        ((start, end),) = code_blocks(text)
         assert text[start:end] == "  ```\n  code\n  ```\n"
 
     def test_several_blocks(self):
@@ -39,12 +39,17 @@ class TestSplitTitle:
         text = "# A\nx\n## B\ny\n### C\nz\n"
         parts = split_title(text, FP, [])
         assert [(p.title, p.text) for p in parts] == [
-            ("A", "# A\nx\n"), ("B", "## B\ny\n"), ("C", "### C\nz\n"),
+            ("A", "# A\nx\n"),
+            ("B", "## B\ny\n"),
+            ("C", "### C\nz\n"),
         ]
 
     def test_text_before_the_first_title_has_an_empty_title(self):
         parts = split_title("intro\n# A\nx\n", FP, [])
-        assert [(p.title, p.text) for p in parts] == [("", "intro\n"), ("A", "# A\nx\n")]
+        assert [(p.title, p.text) for p in parts] == [
+            ("", "intro\n"),
+            ("A", "# A\nx\n"),
+        ]
 
     def test_no_title_is_one_section(self):
         parts = split_title("just\ntext\n", FP, [])
@@ -85,7 +90,9 @@ class TestMarkdownChunker:
         assert chunks[0].file_path == "data/raw/docs/a.md"
 
     def test_accepts_a_string_path(self, project):
-        assert markdown_chunker(str(project("a.md", "# A\nx\n")))[0].title == "A"
+        assert (
+            markdown_chunker(str(project("a.md", "# A\nx\n")))[0].title == "A"
+        )
 
     def test_small_file_is_one_chunk_per_title(self, project):
         text = "# A\nx\n\n## B\ny\n"
@@ -107,7 +114,13 @@ class TestMarkdownChunker:
         assert {c.title for c in chunks} == {"Big"}
 
     def test_a_chunk_never_spans_two_titles(self, project):
-        text = "# A\n" + paragraphs(6) + "## B\n" + paragraphs(6, 100) + "## C\nend\n"
+        text = (
+            "# A\n"
+            + paragraphs(6)
+            + "## B\n"
+            + paragraphs(6, 100)
+            + "## C\nend\n"
+        )
         chunks = markdown_chunker(project("a.md", text))
         assert_valid(chunks, text)
         for chunk in chunks:
@@ -122,9 +135,13 @@ class TestMarkdownChunker:
         assert starts <= set(cut_offsets(chunks))
 
     def test_small_code_block_is_never_cut(self, project):
-        block = "```python\n" + ("c" * 348 + "\n\n") * 3 + "```\n"   # paragraphs too big to be merged back
+        block = (
+            "```python\n" + ("c" * 348 + "\n\n") * 3 + "```\n"
+        )  # paragraphs too big to be merged back
         assert 900 < len(block) <= MAX_CHUNK_SIZE
-        text = "# A\n\n" + paragraphs(3, 600) + block + "\n" + paragraphs(3, 600)
+        text = (
+            "# A\n\n" + paragraphs(3, 600) + block + "\n" + paragraphs(3, 600)
+        )
         chunks = markdown_chunker(project("a.md", text))
         assert_valid(chunks, text)
         assert sum(block in c.text for c in chunks) == 1
@@ -146,15 +163,26 @@ class TestMarkdownChunker:
         assert any(block not in c.text for c in chunks)
 
     def test_windows_line_endings_keep_the_indexes(self, project):
-        text = "# Title\r\n" + "word " * 20 + "\r\n\r\n" + ("para " * 60 + "\r\n\r\n") * 8
+        text = (
+            "# Title\r\n"
+            + "word " * 20
+            + "\r\n\r\n"
+            + ("para " * 60 + "\r\n\r\n") * 8
+        )
         chunks = markdown_chunker(project("a.md", text))
         assert_valid(chunks, text)
         assert chunks[0].title == "Title"
 
 
-@pytest.mark.skipif(not (VLLM / "docs").exists(), reason="vLLM sources not present")
+@pytest.mark.skipif(
+    not (VLLM / "docs").exists(), reason="vLLM sources not present"
+)
 class TestRealDocs:
-    FILES = sorted((VLLM / "docs").rglob("*.md")) if (VLLM / "docs").exists() else []
+    FILES = (
+        sorted((VLLM / "docs").rglob("*.md"))
+        if (VLLM / "docs").exists()
+        else []
+    )
 
     def test_there_are_files(self):
         assert len(self.FILES) > 100
@@ -182,9 +210,18 @@ class TestRealDocs:
             sections = split_title(text, FP, code_blocks(text))
             bounds = [s.first_character_index for s in sections[1:]]
             for chunk in markdown_chunker(path):
-                inside = [b for b in bounds if chunk.first_character_index < b < chunk.last_character_index]
+                inside = [
+                    b
+                    for b in bounds
+                    if chunk.first_character_index
+                    < b
+                    < chunk.last_character_index
+                ]
                 if inside:
-                    problems.append(f"{path.relative_to(VLLM)} chunk {chunk.first_character_index}")
+                    problems.append(
+                        f"{path.relative_to(VLLM)} "
+                        f"chunk {chunk.first_character_index}"
+                    )
         assert not problems, "\n".join(problems[:10])
 
     def test_no_small_code_block_is_cut(self):
@@ -193,7 +230,9 @@ class TestRealDocs:
             text = read_raw(path)
             if not text.strip():
                 continue
-            blocks = [(s, e) for s, e in code_blocks(text) if e - s <= MAX_CHUNK_SIZE]
+            blocks = [
+                (s, e) for s, e in code_blocks(text) if e - s <= MAX_CHUNK_SIZE
+            ]
             for cut in cut_offsets(markdown_chunker(path)):
                 if any(s < cut < e for s, e in blocks):
                     problems.append(f"{path.relative_to(VLLM)} cut at {cut}")

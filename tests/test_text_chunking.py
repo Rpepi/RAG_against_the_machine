@@ -1,7 +1,7 @@
 import pytest
 from helpers import VLLM, assert_valid, cut_offsets, read_raw
-from src.indexing.chunking.common import MAX_CHUNK_SIZE
-from src.indexing.chunking.text_chunking import text_chunker
+from src.config import MAX_CHUNK_SIZE
+from src.chunking.text_chunking import text_chunker
 
 
 class TestTextChunker:
@@ -59,7 +59,11 @@ class TestTextChunker:
 
 @pytest.mark.skipif(not VLLM.exists(), reason="vLLM sources not present")
 class TestRealTextFiles:
-    FILES = sorted(p for p in VLLM.rglob("*.txt") if p.is_file()) if VLLM.exists() else []
+    FILES = (
+        sorted(p for p in VLLM.rglob("*.txt") if p.is_file())
+        if VLLM.exists()
+        else []
+    )
 
     def test_there_are_files(self):
         assert len(self.FILES) >= 20
@@ -83,7 +87,10 @@ class TestRealTextFiles:
         checked = 0
         for path in self.FILES:
             text = read_raw(path)
-            if len(text) <= MAX_CHUNK_SIZE or text.count("\n") < len(text) / 200:
+            if (
+                len(text) <= MAX_CHUNK_SIZE
+                or text.count("\n") < len(text) / 200
+            ):
                 continue
             checked += 1
             cuts = cut_offsets(text_chunker(path))

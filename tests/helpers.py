@@ -1,4 +1,4 @@
-from src.indexing.chunking.common import MAX_CHUNK_SIZE, PROJECT_ROOT
+from src.config import MAX_CHUNK_SIZE, PROJECT_ROOT
 
 VLLM = PROJECT_ROOT / "data" / "raw" / "vllm-0.10.1"
 
@@ -8,13 +8,16 @@ def read_raw(path) -> str:
         return f.read()
 
 
-def assert_valid(chunks, text: str, max_chunk_size: int = MAX_CHUNK_SIZE) -> None:
+def assert_valid(
+    chunks, text: str, max_chunk_size: int = MAX_CHUNK_SIZE
+) -> None:
     """The chunks tile `text` exactly, in order, and none is too big."""
     assert chunks, "no chunk"
     pos = 0
     for chunk in chunks:
         assert chunk.first_character_index == pos, f"gap or overlap at {pos}"
-        assert chunk.text == text[chunk.first_character_index:chunk.last_character_index]
+        start, end = chunk.first_character_index, chunk.last_character_index
+        assert chunk.text == text[start:end]
         assert chunk.size == len(chunk.text) > 0
         assert chunk.size <= max_chunk_size
         assert chunk.file_path.startswith("data/raw/")

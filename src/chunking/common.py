@@ -2,23 +2,25 @@ import math
 import re
 from collections.abc import Sequence
 from pathlib import Path
-from src.utils.find_project_root import find_project_root
-from src.indexing.chunking.models import Chunck
+from src.data_models.models import Chunck
+from src.config import (
+    DEFAULT_MAX_CHUNK_SIZE,
+    MIN_CHUNK_SIZE,
+    PROJECT_ROOT,
+    RAW_PREFIX,
+)
 
-PROJECT_ROOT = find_project_root()
-RAW_PREFIX = "data/raw"
-DEFAULT_MAX_CHUNK_SIZE = 2000
-MAX_CHUNK_SIZE = DEFAULT_MAX_CHUNK_SIZE
-MIN_CHUNK_SIZE = 300
+
 BLANK_LINE_RE = re.compile(r"\n(?:[ \t\r]*\n)+")
 
 Block = tuple[int, int]
 
 
-def read_source(path: Path) -> tuple[str, str]:
+def read_source(path: Path | str) -> tuple[str, str]:
     """Text of the file, and the `file_path` to give to its chunks.
 
-    The `file_path` is the path from the project root, under `data/raw/`. A file
+    The `file_path` is the path from the project root, under
+    `data/raw/`. A file
     already inside `data/raw/` keeps its path, so the prefix is never doubled.
     """
     path = Path(path)
@@ -33,15 +35,18 @@ def read_source(path: Path) -> tuple[str, str]:
 def check_max_chunk_size(max_chunk_size: int) -> None:
     """Raise ValueError if `max_chunk_size` cannot hold any chunk."""
     if max_chunk_size < 1:
-        raise ValueError(f"max_chunk_size must be at least 1, got {max_chunk_size}")
+        raise ValueError(
+            f"max_chunk_size must be at least 1, got {max_chunk_size}"
+        )
 
 
 def min_chunk_size(max_chunk_size: int) -> int:
-    """Chunks under this size get merged; it shrinks with a small `max_chunk_size`."""
+    """Size under which chunks get merged (smaller for small limits)."""
     return min(MIN_CHUNK_SIZE, max_chunk_size // 4)
 
 
 def make_chunk(file_path: str, start: int, text: str, title: str) -> Chunck:
+    """Build the chunk of `text` that starts at offset `start` of the file."""
     return Chunck(
         file_path=file_path,
         first_character_index=start,
@@ -103,7 +108,7 @@ def split_blankline(
     blocks: Sequence[Block] = (),
     max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE,
 ) -> list[Chunck]:
-    """One chunk per paragraph, the blank lines staying with the paragraph before them.
+    """One chunk per paragraph, blank lines staying with the one before.
 
     A blank line inside a block that fits in one chunk is not a cut point.
     """
@@ -113,7 +118,10 @@ def split_blankline(
     start = 0
     for match in BLANK_LINE_RE.finditer(text):
         cut = match.end()
-        if cut < len(text) and protected_block(base + cut, blocks, max_chunk_size) is None:
+        if (
+            cut < len(text)
+            and protected_block(base + cut, blocks, max_chunk_size) is None
+        ):
             parts.append(sub_chunk(chunk, start, text[start:cut]))
             start = cut
     parts.append(sub_chunk(chunk, start, text[start:]))
@@ -125,7 +133,7 @@ def split_limits(
     blocks: Sequence[Block] = (),
     max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE,
 ) -> list[Chunck]:
-    """Cut into parts of at most `max_chunk_size` characters, as even as possible.
+    """Cut into parts of at most `max_chunk_size` characters, evenly.
 
     A cut goes back to the previous line break when there is one in the second
     half of the part. A cut falling inside a block that fits in one chunk is
@@ -146,7 +154,11 @@ def split_limits(
                 end = line_break
             if block := protected_block(base + end, blocks, max_chunk_size):
                 block_start, block_end = block[0] - base, block[1] - base
-                end = block_start if block_start > start else min(block_end, len(text))
+                end = (
+                    block_start
+                    if block_start > start
+                    else min(block_end, len(text))
+                )
         parts.append(sub_chunk(chunk, start, text[start:end]))
         start = end
     return parts
@@ -156,16 +168,18 @@ def fusion_chuncks(
     chunks: list[Chunck],
     max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE,
 ) -> list[Chunck]:
-    """Merge a chunk that is too small with its neighbour, up to `max_chunk_size`.
+    """Merge a too small chunk with its neighbour, up to `max_chunk_size`.
 
-    Only meant for chunks of one same section, so a chunk never spans two titles.
+    Only meant for the chunks of one section: a chunk never spans two titles.
     """
     smallest = min_chunk_size(max_chunk_size)
     merged: list[Chunck] = []
     for chunk in chunks:
-        if (merged
-                and min(merged[-1].size, chunk.size) < smallest
-                and merged[-1].size + chunk.size <= max_chunk_size):
+        if (
+            merged
+            and min(merged[-1].size, chunk.size) < smallest
+            and merged[-1].size + chunk.size <= max_chunk_size
+        ):
             prev = merged[-1]
             merged[-1] = make_chunk(
                 prev.file_path,
@@ -183,7 +197,7 @@ def refine(
     blocks: Sequence[Block] = (),
     max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE,
 ) -> list[Chunck]:
-    """Cut the sections bigger than `max_chunk_size`: by paragraph, then by size."""
+    """Cut sections bigger than `max_chunk_size`: by paragraph, then size."""
     check_max_chunk_size(max_chunk_size)
     result: list[Chunck] = []
     for section in sections:

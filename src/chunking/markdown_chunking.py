@@ -1,9 +1,8 @@
 import re
 from pathlib import Path
-from src.indexing.chunking.models import Chunck
-from src.indexing.chunking.common import (
-    DEFAULT_MAX_CHUNK_SIZE,
-    PROJECT_ROOT,
+from src.data_models.models import Chunck
+from src.config import DEFAULT_MAX_CHUNK_SIZE, PROJECT_ROOT
+from src.chunking.common import (
     Block,
     read_source,
     refine,
@@ -34,8 +33,10 @@ def code_blocks(text: str) -> list[Block]:
     return blocks
 
 
-def split_title(text: str, file_path: str, blocks: list[Block]) -> list[Chunck]:
-    """One chunk per section, a section starting at a `#`, `##` or `###` line."""
+def split_title(
+    text: str, file_path: str, blocks: list[Block]
+) -> list[Chunck]:
+    """One chunk per section; a section starts at a `#`..`###` line."""
     titles: list[tuple[int, str]] = []
     pos = 0
     for line in text.split("\n"):
@@ -46,7 +47,22 @@ def split_title(text: str, file_path: str, blocks: list[Block]) -> list[Chunck]:
     return split_at(text, file_path, titles, "")
 
 
-def markdown_chunker(path: Path, max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE) -> list[Chunck]:
+def markdown_chunker(
+    path: Path | str, max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE
+) -> list[Chunck]:
+    """Chunk a Markdown file along its sections.
+
+    A section starts at a `#`, `##` or `###` title. Sections bigger than
+    `max_chunk_size` are cut by paragraph, then by size; a fenced code block
+    is never cut when it fits in one chunk.
+
+    Args:
+        path: the Markdown file.
+        max_chunk_size: maximum number of characters of a chunk.
+
+    Returns:
+        Chunks that cover the file exactly, in order; none for a blank file.
+    """
     text, file_path = read_source(path)
     if not text.strip():
         return []
@@ -55,7 +71,18 @@ def markdown_chunker(path: Path, max_chunk_size: int = DEFAULT_MAX_CHUNK_SIZE) -
 
 
 if __name__ == "__main__":
-    chunks = markdown_chunker(Path(PROJECT_ROOT) / "data" / "raw" / "vllm-0.10.1" / "docs" / "design" / "plugin_system.md")
+    chunks = markdown_chunker(
+        Path(PROJECT_ROOT)
+        / "data"
+        / "raw"
+        / "vllm-0.10.1"
+        / "docs"
+        / "design"
+        / "plugin_system.md"
+    )
     for n, chunk in enumerate(chunks, 1):
-        print(f"chunk {n} [{chunk.first_character_index}:{chunk.last_character_index}] {chunk.title!r}")
+        print(
+            f"chunk {n} [{chunk.first_character_index}:"
+            f"{chunk.last_character_index}] {chunk.title!r}"
+        )
         print(chunk.text + "\n")
